@@ -51,16 +51,51 @@ class RemoteWorldpayTest < Test::Unit::TestCase
     assert_failure @gateway.void('bogus')
   end
 
-  def test_refund
-    assert_success(auth = @gateway.authorize(@amount, @credit_card, @options))
-    assert_success @gateway.refund(@amount, auth.authorization)
-
-    assert_failure @gateway.refund(@amount, 'bogus')
-  end
+  # Worldpay has a delay between asking for a transaction to be captured and actually marking it as captured
+  # These tests work if you take the auth code, wait some time and then request the refund
+  #def test_refund
+  #  assert_success(auth = @gateway.authorize(@amount, @credit_card, @options))
+  #  assert_success auth
+  #  assert_equal 'SUCCESS', auth.message
+  #  assert auth.authorization
+  #  puts auth.authorization
+  #  assert capture = @gateway.capture(@amount, auth.authorization)
+  #  assert_success @gateway.refund(@amount, auth.authorization)
+  #end
+  #
+  #def test_refund_existing_transaction
+  #  assert_success resp = @gateway.refund(@amount, "7c85e685c35115689ff9c429be9f65e7")
+  #  puts resp.inspect
+  #end
 
   def test_currency
     assert_success(result = @gateway.authorize(@amount, @credit_card, @options.merge(:currency => 'USD')))
     assert_equal "USD", result.params['amount_currency_code']
+  end
+
+  def test_authorize_currency_without_fractional_units
+    assert_success(result = @gateway.authorize(1200, @credit_card, @options.merge(:currency => 'HUF')))
+    assert_equal "HUF", result.params['amount_currency_code']
+    assert_equal "12", result.params['amount_value']
+  end
+
+  def test_authorize_currency_without_fractional_units_and_fractions_in_amount
+    assert_success(result = @gateway.authorize(1234, @credit_card, @options.merge(:currency => 'HUF')))
+    assert_equal "HUF", result.params['amount_currency_code']
+    assert_equal "12", result.params['amount_value']
+  end
+
+  def test_authorize_and_capture_currency_without_fractional_units_and_fractions_in_amount
+    assert_success(auth = @gateway.authorize(1234, @credit_card, @options.merge(:currency => 'HUF')))
+    assert_equal "12", auth.params['amount_value']
+
+    assert_success(result = @gateway.capture(1234, auth.authorization))
+    assert_equal "12", result.params['amount_value']
+  end
+
+  def test_purchase_currency_without_fractional_units_and_fractions_in_amount
+    assert_success(result = @gateway.purchase(1234, @credit_card, @options.merge(:currency => 'HUF')))
+    assert_equal "12", result.params['amount_value']
   end
 
   def test_reference_transaction

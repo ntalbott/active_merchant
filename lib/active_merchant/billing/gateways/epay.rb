@@ -2,13 +2,13 @@ module ActiveMerchant #:nodoc:
   module Billing #:nodoc:
     class EpayGateway < Gateway
       API_HOST = 'ssl.ditonlinebetalingssystem.dk'
-      SOAP_URL = 'https://' + API_HOST + '/remote/payment'
+      self.live_url = 'https://' + API_HOST + '/remote/payment'
 
       self.default_currency = 'DKK'
       self.money_format = :cents
       self.supported_cardtypes = [:dankort, :forbrugsforeningen, :visa, :master,
                                   :american_express, :diners_club, :jcb, :maestro]
-      self.supported_countries = ['DK']
+      self.supported_countries = ['DK', 'SE', 'NO']
       self.homepage_url = 'http://epay.dk/'
       self.display_name = 'ePay'
 
@@ -53,8 +53,7 @@ module ActiveMerchant #:nodoc:
       # login: merchant number
       # password: referrer url (for authorize authentication)
       def initialize(options = {})
-        requires!(options, :login, :password)
-        @options = options
+        requires!(options, :login)
         super
       end
 
@@ -180,15 +179,23 @@ module ActiveMerchant #:nodoc:
       end
 
       def do_authorize(params)
-        headers = {
-          'Referer' => options[:password]
-        }
+        headers = {}
+        headers['Referer'] = (options[:password] || "activemerchant.org")
 
         response = raw_ssl_request(:post, 'https://' + API_HOST + '/auth/default.aspx', authorize_post_data(params), headers)
 
         # Authorize gives the response back by redirecting with the values in
         # the URL query
-        query = CGI::parse(URI.parse(response['Location'].gsub(' ', '%20')).query)
+        if location = response['Location']
+          query = CGI::parse(URI.parse(location.gsub(' ', '%20')).query)
+        else
+          return {
+            'accept' => '0',
+            'errortext' => 'ePay did not respond as expected. Please try again.',
+            'response_code' => response.code,
+            'response_message' => response.message
+          }
+        end
 
         result = {}
         query.each_pair do |k,v|
@@ -228,7 +235,7 @@ module ActiveMerchant #:nodoc:
           'Content-Type' => 'text/xml; charset=utf-8',
           'Host' => API_HOST,
           'Content-Length' => data.size.to_s,
-          'SOAPAction' => SOAP_URL + '/' + soap_call
+          'SOAPAction' => self.live_url + '/' + soap_call
         }
       end
 
@@ -239,7 +246,7 @@ module ActiveMerchant #:nodoc:
                                       'xmlns:xsd' => 'http://www.w3.org/2001/XMLSchema',
                                       'xmlns:soap' => 'http://schemas.xmlsoap.org/soap/envelope/' } do
             xml.tag! 'soap:Body' do
-              xml.tag! soap_call, { 'xmlns' => SOAP_URL } do
+              xml.tag! soap_call, { 'xmlns' => self.live_url } do
                 xml.tag! 'merchantnumber', @options[:login]
                 xml.tag! 'transactionid', params[:transaction]
                 xml.tag! 'amount', params[:amount].to_s if soap_call != 'delete'

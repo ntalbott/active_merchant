@@ -6,13 +6,13 @@ module ActiveMerchant #:nodoc:
       module SagePayForm
         class Helper < ActiveMerchant::Billing::Integrations::Helper
           include Encryption
-          
+
           mapping :credential2, 'EncryptKey'
-          
+
           mapping :account, 'Vendor'
           mapping :amount, 'Amount'
           mapping :currency, 'Currency'
-        
+
           mapping :order, 'VendorTxCode'
 
           mapping :customer,
@@ -41,20 +41,39 @@ module ActiveMerchant #:nodoc:
           mapping :return_url, 'SuccessURL'
           mapping :description, 'Description'
 
+          def shipping_address(params = {})
+            @shipping_address_set = true unless params.empty?
+
+            params.each do |k, v|
+              field = mappings[:shipping_address][k]
+              add_field(field, v) unless field.nil?
+            end
+          end
+
+          def map_billing_address_to_shipping_address
+            %w(City Address1 Address2 State PostCode Country).each do |field|
+              fields["Delivery#{field}"] = fields["Billing#{field}"]
+            end
+          end
+
           def form_fields
+            map_billing_address_to_shipping_address unless @shipping_address_set
+
             fields['DeliveryFirstnames'] ||= fields['BillingFirstnames']
             fields['DeliverySurname']    ||= fields['BillingSurname']
-            
+
             fields['FailureURL'] ||= fields['SuccessURL']
+
+            fields['BillingPostCode'] ||= "0000"
+            fields['DeliveryPostCode'] ||= "0000"
 
             crypt_skip = ['Vendor', 'EncryptKey', 'SendEmail']
             crypt_skip << 'BillingState'  unless fields['BillingCountry']  == 'US'
             crypt_skip << 'DeliveryState' unless fields['DeliveryCountry'] == 'US'
             crypt_skip << 'CustomerEMail' unless fields['SendEmail']
-            
             key = fields['EncryptKey']
             @crypt ||= create_crypt_field(fields.except(*crypt_skip), key)
-            
+
             {
               'VPSProtocol' => '2.23',
               'TxType' => 'PAYMENT',
@@ -73,7 +92,7 @@ module ActiveMerchant #:nodoc:
 
           def sanitize(key, value)
             reject = exact = nil
-            
+
             case key
             when /URL$/
               # allow all
@@ -91,10 +110,12 @@ module ActiveMerchant #:nodoc:
               exact = /^[A-Z]{3}$/
             when /State$/
               exact = /^[A-Z]{2}$/
+            when 'Description'
+              value = value[0...100]
             else
               reject = /&+/
             end
-            
+
             if exact
               raise ArgumentError, "Invalid value for #{key}: #{value.inspect}" unless value =~ exact
               value

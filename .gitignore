@@ -1,11 +1,8 @@
-.DS_Store
-*.orig
-*.swp
-*.swo
+.yardoc
 pkg
-.rvmrc
-vendor/cache
-.bundle
 
-# ignore Gemfile.lock because we support multiple versions of Rails and don't want to ship locked version requirements
+# ignore Gemfile.lock because we support multiple versions of Rails and
+# don't want to ship locked version requirements
 Gemfile.lock
+Gemfile*.lock
+.rbx/
